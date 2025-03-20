@@ -1,0 +1,175 @@
+import 'dart:io';
+import 'dart:math';
+
+class Character {
+  String name;
+  int hp;
+  int attack;
+  int defense;
+
+  Character(this.name, this.hp, this.attack, this.defense);
+
+  bool isAlive() => hp > 0;
+
+  void takeDamage(int damage) {
+    int actualDamage = max(0, damage - defense);
+    hp -= actualDamage;
+    print('$name이(가) $actualDamage의 피해를 입었습니다! 남은 HP: $hp');
+  }
+
+  void attackEnemy(Monster enemy) {
+    if (!isAlive()) return;
+    int damage = Random().nextInt(5) + (attack - 2);
+    print('$name이(가) ${enemy.name}에게 $damage의 피해를 입혔습니다!');
+    enemy.takeDamage(damage);
+  }
+}
+
+class Monster {
+  String name;
+  int hp;
+  int attack;
+  int defense = 0;
+
+  Monster(this.name, this.hp, int attackRangeMax, int characterDefense)
+      : attack = max(Random().nextInt(attackRangeMax) + 1, characterDefense);
+
+  bool isAlive() => hp > 0;
+
+  void takeDamage(int damage) {
+    int actualDamage = max(0, damage - defense);
+    hp -= actualDamage;
+    print('$name이(가) $actualDamage의 피해를 입었습니다! 남은 HP: $hp');
+  }
+
+  void attackEnemy(Character enemy) {
+    if (isAlive()) {
+      int damage = max(0, attack - enemy.defense);
+      print('$name이(가) ${enemy.name}에게 $damage의 피해를 입혔습니다!');
+      enemy.takeDamage(damage);
+    }
+  }
+}
+
+class Game {
+  late Character player;
+  List<Monster> monsterList = [];
+  int monstersDefeated = 0;
+
+  Game() {
+    print("이름을 입력해주세요!");
+    String playerName = getCharacterName();
+    loadCharacter(playerName);
+    loadMonsters();
+  }
+
+  String getCharacterName() {
+    while (true) {
+      stdout.write("캐릭터의 이름을 입력하세요 (한글 또는 영어만 허용): ");
+      String? name = stdin.readLineSync()?.trim();
+      if (name != null && RegExp(r'^[a-zA-Z가-힣]+$').hasMatch(name)) {
+        return name;
+      }
+      print("잘못된 이름입니다. 한글 또는 영어 문자만 사용할 수 있습니다.");
+    }
+  }
+
+  void loadCharacter(String name) {
+    try {
+      List<String> stats = File('characters.txt').readAsStringSync().split(',');
+      player = Character(name, int.parse(stats[0]), int.parse(stats[1]), int.parse(stats[2]));
+    } catch (e) {
+      print("캐릭터 파일을 찾을 수 없습니다! 기본값을 사용합니다.");
+      player = Character(name, 100, 10, 3);
+    }
+  }
+
+  void loadMonsters() {
+    try {
+      List<String> lines = File('monsters.txt').readAsLinesSync();
+      for (var line in lines) {
+        List<String> data = line.split(',');
+        if (data.length == 3) {
+          monsterList.add(Monster(data[0], int.parse(data[1]), int.parse(data[2]), player.defense));
+        }
+      }
+    } catch (e) {
+      print("몬스터 파일을 찾을 수 없습니다! 기본 몬스터를 사용합니다.");
+      monsterList = [
+        Monster("고블린", 30, 5, player.defense),
+        Monster("오크", 50, 8, player.defense),
+        Monster("드래곤", 100, 15, player.defense)
+      ];
+    }
+  }
+
+  Monster? getRandomMonster() {
+    return monsterList.isNotEmpty ? (monsterList..shuffle()).first : null;
+  }
+
+  void battle(Monster monster) {
+    print('${monster.name}이(가) 나타났습니다!');
+    while (player.isAlive() && monster.isAlive()) {
+      stdout.write("행동을 선택하세요: (1) 공격, (2) 방어: ");
+      String? action = stdin.readLineSync();
+      if (action == "1") {
+        player.attackEnemy(monster);
+      } else if (action == "2") {
+        print("이번 턴을 방어했습니다!");
+      }
+      if (monster.isAlive()) {
+        monster.attackEnemy(player);
+      }
+    }
+    if (player.isAlive()) {
+      print('${monster.name}을(를) 처치했습니다!');
+      monsterList.remove(monster);
+      monstersDefeated++;
+    } else {
+      print("패배하였습니다!");
+    }
+  }
+
+  void saveResult(String result) {
+    stdout.write("게임 결과를 저장하시겠습니까? (y/n): ");
+    String? choice = stdin.readLineSync();
+    if (choice?.toLowerCase() == "y") {
+      File('result.txt').writeAsStringSync('캐릭터: ${player.name}\n남은 HP: ${player.hp}\n게임 결과: $result\n');
+      print("게임 결과가 result.txt 파일에 저장되었습니다.");
+    }
+  }
+
+  void startGame() {
+    print("게임을 시작합니다!");
+    while (player.isAlive() && monstersDefeated < monsterList.length) {
+      Monster? monster = getRandomMonster();
+      if (monster == null) {
+        print("모든 몬스터를 처치했습니다! 승리하였습니다!");
+        saveResult("승리");
+        return;
+      }
+      battle(monster);
+      if (player.isAlive()) {
+        stdout.write("다음 몬스터와 대결하시겠습니까? (y/n): ");
+        String? choice = stdin.readLineSync();
+        if (choice?.toLowerCase() != "y") {
+          print("전장을 떠났습니다.");
+          saveResult("게임 중단");
+          return;
+        }
+      }
+    }
+    if (player.isAlive()) {
+      print("축하합니다! 승리하였습니다!");
+      saveResult("승리");
+    } else {
+      print("게임 오버.");
+      saveResult("패배");
+    }
+  }
+}
+
+void main() {
+  Game game = Game();
+  game.startGame();
+}
